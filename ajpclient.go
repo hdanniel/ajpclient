@@ -266,6 +266,7 @@ func (ajp_rp *AjpResponsePacket) chunk() {
         ajp_rp.position = 7
 }
 
+
 func main() {
         flag.Parse()
         flag_url := flag.Arg(0)
@@ -308,13 +309,10 @@ func main() {
         //ajp_msg_append_sc_string(&payload_buffer, "Mozilla/5.0 (Windows NT 6.1; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/38.0.2125.111 Safari/537.36", SC_REQ_USER_AGENT)
         ajp_msg_append_sc_string(&payload_buffer, "AJPClient/0.1 (+https://github.com/hdanniel/ajpclient)", SC_REQ_USER_AGENT)
         ajp_msg_append_sc_string(&payload_buffer, "gzip,deflate,sdch", "Accept-Encoding")
-        //ajp_msg_append_sc_string(&payload_buffer, "es-ES,es;q=0.8,en;q=0.6", "Accept-Language")
         ajp_msg_append_sc_string(&payload_buffer, "en-EN,en;q=1", "Accept-Language")
-        //ajp_msg_append_sc_string(&payload_buffer, "optimizelyEndUserId=oeu1408650368327r0.16359442425891757; COMPANY_ID=10132; ID=336b55396f6845306655513d; PASSWORD=6f656c6959754d4752484a6d5a726455546c4c2b7a413d3d; REMEMBER_ME=true; LOGIN=6870617a; SCREEN_NAME=4756327a36384778736c303d; optimizelySegments=%7B%22175595738%22%3A%22none%22%2C%22175595|366.5|109|136|135.5|137|371|331.5|328.5|334.5; COOKIE_SUPPORT=true; JSESSIONID=9D96A74D66EE753A5A63ABAD0E12C42E; GUEST_LANGUAGE_ID=en_US", SC_REQ_COOKIE)
         ajp_msg_append_sc_string(&payload_buffer, "", SC_REQ_COOKIE)
         //ajp_msg_append_sc_string(&payload_buffer, "\xCC", SC_REQ_CONTENT_LENGTH)
         ajp_msg_append_sc_string(&payload_buffer, "0", SC_REQ_CONTENT_LENGTH)
-        //ajp_msg_append_attribute_string(&payload_buffer, "cfi_node_79", SC_A_JVM_ROUTE, "")
         ajp_msg_append_attribute_string(&payload_buffer, "", SC_A_JVM_ROUTE, "")
         ajp_msg_append_attribute_string(&payload_buffer, client_port, SC_A_REQ_ATTRIBUTE, "AJP_REMOTE_PORT")
         ajp_msg_append_attribute_string(&payload_buffer, "ACT", SC_A_REQ_ATTRIBUTE, "JK_LB_ACTIVATION")
@@ -360,7 +358,7 @@ func main() {
                 _, err = conn.Read(ajp_reader.message)
 
                 if err != nil {
-                        fmt.Printf("%s\n", err.Error())
+                        //fmt.Printf("%s\n", err.Error())
                         if strings.HasSuffix(err.Error(), "i/o timeout") {
                                 println("Connection idle after 10 seconds")
                         } else {
@@ -370,34 +368,40 @@ func main() {
                         os.Exit(1)
                 }
                 // for loop white there is content in the Reader
+                LoopContent:
                 for {
-
-                        ajp_reader.browse()
-                        ajp_reader.print_begin()
-                        if ajp_reader.begin != "AB" {
+                        // if message is empty, break the loop
+                        if (bytes.Equal(ajp_reader.message,nil)) {
+                                break
+                        }
+                        // if message don't begin with AB we need to check
+                        if !(bytes.Equal(ajp_reader.message[0:2], ab_buf)) {
+                                // if message starts with 0000 probably is garbage
                                 if bytes.Equal(ajp_reader.message[0:2], empty_buf) {
-                                        fmt.Printf("EMPTY")
                                         break
+                                // else probably is text
                                 } else {
-                                        fmt.Printf("NOEMPTY")
-                                        ab_position := uint16(bytes.Index(ajp_reader.message,ab_buf))
-                                        fmt.Printf("%s\n", ajp_get_string(&ajp_reader.message,ajp_reader.position,ab_position))
-                                        ajp_reader.position = ab_position
-                                        ajp_reader.message = ajp_reader.message[ajp_reader.position:]
-                                        ajp_reader.browse()
+                                        ab_index := bytes.Index(ajp_reader.message,ab_buf)
+                                        if ab_index == -1 {
+                                                break
+                                        } else {
+                                                ab_position := uint16(ab_index)
+                                                ajp_reader.position = ab_position
+                                                ajp_reader.message = ajp_reader.message[ajp_reader.position:]
+                                        }
                                 }
                         }
+                        ajp_reader.browse()
+                        //ajp_reader.print_begin()
                                         //fmt.Printf("%d\n", len(ajp_reader.message))
-                                        //fmt.Printf("%x\n", ajp_reader.message)
                         switch int(ajp_reader.prefix[0]) {
                                 case AJP13_SEND_BODY_CHUNK:
                                         ajp_reader.chunk()
-                                        fmt.Printf("chunk length : %d\n", ajp_reader.chunk_length)
-                                        //fmt.Printf("magic header: %x\n", ajp_reader.message[7:9])
+                                        //fmt.Printf("chunk length : %d\n", ajp_reader.chunk_length)
                                         gzip_buf := make([]byte, 2)
                                         gzip_buf[0] = 0x1F
                                         gzip_buf[1] = 0x8B
-                                        fmt.Printf("reader pos : %d\n", ajp_reader.position)
+                                        //fmt.Printf("reader pos : %d\n", ajp_reader.position)
                                         if bytes.Equal(ajp_reader.message[7:9], gzip_buf) {
                                                 fmt.Printf("gzip compression method: %s\n", gzip_return_method(ajp_get_string(&ajp_reader.message,9,1)))
                                                 fmt.Printf("gzip flags: %x\n", ajp_reader.message[10])
@@ -409,17 +413,17 @@ func main() {
                                                 io.Copy(os.Stdout, ajp_body_reader)
                                                 ajp_reader.position = 17 + ajp_reader.chunk_length
                                         } else {
-                                                //fmt.Printf("%s\n", ajp_get_string(&ajp_reader.message,7,ajp_reader.chunk_length))
-                                                //fmt.Printf("%s\n", ajp_get_string(&ajp_reader.message,7,8100))
-                                                //ajp_reader.position = 7 + ajp_reader.chunk_length
-                                                ab_position := uint16(bytes.Index(ajp_reader.message[1:],ab_buf))
-                                                fmt.Printf("ab pos : %d\n", ab_position)
-                                                fmt.Printf("%s\n", ajp_get_string(&ajp_reader.message,0,ab_position+1))
-                                                ajp_reader.position = 65535
-                                                fmt.Printf("reader pos : %d\n", ajp_reader.position)
+                                                //fmt.Printf("slice len : %d\n", len(ajp_reader.message))
+                                                ajp_message_length := uint16(len(ajp_reader.message))
+                                                if  ajp_reader.chunk_length < ajp_message_length {
+                                                        fmt.Printf("%s\n", ajp_get_string(&ajp_reader.message,7,ajp_reader.chunk_length))
+                                                        ajp_reader.position = 7 + ajp_reader.chunk_length + 1
+                                                } else {
+                                                        fmt.Printf("%s\n", ajp_get_string(&ajp_reader.message,7,ajp_message_length-7))
+                                                        break LoopContent
+                                                }
                                         }
                                         ajp_reader.message = ajp_reader.message[ajp_reader.position:]
-                                        fmt.Printf("magic header: %x\n", ajp_reader.message)
                                 case AJP13_SEND_HEADERS:
                                         var header_name,header_value string
                                         ajp_reader.headers()
@@ -452,41 +456,4 @@ func main() {
                         }
                 } //end for message
         } // end for conn
-        /*
-        ab_buf := make([]byte, 2)
-        ab_buf[0] = 0x41
-        ab_buf[1] = 0x42
-        if bytes.Equal(ajp_reader.message[ajp_reader.position:ajp_reader.position+2], ab_buf) {
-                ajp_nextbody := new(AjpResponsePacket)
-                ajp_nextbody.message = ajp_reader.message[ajp_reader.position:]
-                ajp_nextbody.browse()
-                fmt.Printf("data begin : %s\n", ajp_nextbody.begin)
-                fmt.Printf("data length : %d\n", ajp_nextbody.length)
-                fmt.Printf("data type : %x\n", ajp_nextbody.prefix)
-                ajp_nextbody.chunk()
-                fmt.Printf("chunk length : %d\n", ajp_nextbody.chunk_length)
-                fmt.Printf("chunk body: %s\n", ajp_get_string(&ajp_nextbody.message,7,ajp_nextbody.chunk_length))
-                fmt.Printf("chunk next: %x\n", ajp_nextbody.message[7+ajp_nextbody.chunk_length:107+ajp_nextbody.chunk_length])
-    }
-
-        //fmt.Printf("data : %x\n", ajp_reader.message[ajp_reader.position:])
-        ajp_body := new(AjpResponsePacket)
-        ajp_body.message = make([]byte, body_len)
-        _, err = conn.Read(ajp_body.message)
-        ajp_body.browse()
-        fmt.Printf("data begin : %s\n", ajp_body.begin)
-        fmt.Printf("data length : %d\n", ajp_body.length)
-        fmt.Printf("data type : %x\n", ajp_body.prefix)
-        ajp_body.chunk()
-        fmt.Printf("chunk length : %d\n", ajp_body.chunk_length)
-        fmt.Printf("gzip magic header: %x\n", ajp_body.message[7:9])
-        fmt.Printf("gzip compression method: %s\n", gzip_return_method(ajp_get_string(&ajp_body.message,9,1)))
-        fmt.Printf("gzip flags: %x\n", ajp_body.message[10])
-        fmt.Printf("gzip modification time: %x\n", ajp_body.message[11:15])
-        fmt.Printf("gzip extra flags: %x\n", ajp_body.message[15])
-        fmt.Printf("gzip OS type: %x\n", ajp_body.message[16])
-        //ajp_body_buf := bytes.NewBuffer(ajp_body.message[17:])
-        //ajp_body_reader := flate.NewReader(ajp_body_buf)
-        //io.Copy(os.Stdout, ajp_body_reader)
-        */
 }

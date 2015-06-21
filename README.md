@@ -4,3 +4,5 @@ Command line utility to make requests directly to the AJP connector in tomcat or
 Usage:
 
 ajpclient http://127.0.0.1:8009/
+
+Also you can try ajpclient in a [codepicnic console](https://codepicnic.com/consoles/ajpclient-2)
